@@ -48,6 +48,7 @@ export default function DashboardPage() {
   const [showNew, setShowNew] = useState(false)
   const [showPlan, setShowPlan] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<Match | null>(null)
+  const [deleteStep, setDeleteStep] = useState<1 | 2>(1)
   const preloaded = useRef(false)
 
   useEffect(() => {
@@ -291,7 +292,7 @@ export default function DashboardPage() {
                   )}
                   {match.status !== 'live' && (
                     <button
-                      onClick={() => setDeleteTarget(match)}
+                      onClick={() => { setDeleteTarget(match); setDeleteStep(1) }}
                       className="px-5 py-3 text-red-500 text-sm border-l border-slate-700 active:bg-slate-700 active:text-red-400"
                     >
                       🗑
@@ -318,11 +319,28 @@ export default function DashboardPage() {
         onSubmit={handleCreatePlan}
       />
 
+      {/* Step 1: first confirm for all matches */}
       <ConfirmDialog
-        isOpen={!!deleteTarget}
+        isOpen={!!deleteTarget && deleteStep === 1}
         title="Elimina partita"
-        message={`Eliminare la partita contro ${deleteTarget?.opponent}? Tutti gli eventi associati verranno cancellati.`}
-        confirmLabel="Elimina"
+        message={`Sei sicuro di voler eliminare la partita contro ${deleteTarget?.opponent}?`}
+        confirmLabel="Continua"
+        danger
+        onConfirm={() => {
+          if (deleteTarget?.status === 'done') {
+            setDeleteStep(2)
+          } else {
+            handleDelete()
+          }
+        }}
+        onCancel={() => setDeleteTarget(null)}
+      />
+      {/* Step 2: second confirm only for completed matches */}
+      <ConfirmDialog
+        isOpen={!!deleteTarget && deleteStep === 2}
+        title="ATTENZIONE"
+        message={`Questa partita è già stata giocata (${deleteTarget?.score_us}–${deleteTarget?.score_them} vs ${deleteTarget?.opponent}). Eliminando perderai tutti i dati degli eventi. Confermi?`}
+        confirmLabel="ELIMINA DEFINITIVAMENTE"
         danger
         onConfirm={handleDelete}
         onCancel={() => setDeleteTarget(null)}

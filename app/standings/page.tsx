@@ -116,9 +116,10 @@ export default function StandingsPage() {
   const handleSave = async (standingId: string) => {
     setSaving(true)
     const sb = getSupabase()
+    const calculatedPoints = draft.won * 3 + draft.drawn
     const { error } = await sb
       .from('standings')
-      .update({ ...draft, updated_at: new Date().toISOString() })
+      .update({ ...draft, points: calculatedPoints, updated_at: new Date().toISOString() })
       .eq('id', standingId)
 
     if (error) {
@@ -243,7 +244,7 @@ export default function StandingsPage() {
                           /* Editable team */
                           <div>
                             <div className="flex flex-col gap-3 mb-4">
-                              {STAT_DEFS.map(stat => (
+                              {STAT_DEFS.filter(s => s.key !== 'points').map(stat => (
                                 <div key={stat.key} className="flex items-center gap-3">
                                   <span className="text-slate-400 text-xs font-mono w-6 flex-shrink-0">{stat.short}</span>
                                   <button
@@ -252,9 +253,7 @@ export default function StandingsPage() {
                                   >
                                     −
                                   </button>
-                                  <span className={`flex-1 text-center text-2xl font-black ${
-                                    stat.key === 'points' ? 'text-green-400' : 'text-white'
-                                  }`}>
+                                  <span className="flex-1 text-center text-2xl font-black text-white">
                                     {draft[stat.key]}
                                   </span>
                                   <button
@@ -265,6 +264,14 @@ export default function StandingsPage() {
                                   </button>
                                 </div>
                               ))}
+                              {/* Points auto-calculated */}
+                              <div className="flex items-center gap-3 bg-slate-700/40 rounded-xl px-3 py-2 border border-green-900/40">
+                                <span className="text-green-400 text-xs font-mono w-6 flex-shrink-0">Pt</span>
+                                <span className="flex-1 text-center text-2xl font-black text-green-400">
+                                  {draft.won * 3 + draft.drawn}
+                                </span>
+                                <span className="text-slate-500 text-xs flex-shrink-0">auto</span>
+                              </div>
                             </div>
                             <button
                               onClick={() => handleSave(standing.id)}

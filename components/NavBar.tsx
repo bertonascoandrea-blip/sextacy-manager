@@ -8,7 +8,7 @@ const links = [
   { href: '/', label: 'Home', icon: '🏠' },
   { href: '/players', label: 'Rosa', icon: '👥' },
   { href: '/standings', label: 'Girone', icon: '📊' },
-  { href: '/regolamento', label: 'Regole', icon: '📋' },
+  { href: '/history', label: 'Storico', icon: '📜' },
 ]
 
 export function NavBar() {
