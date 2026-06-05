@@ -11,12 +11,14 @@ import { useToast } from '@/components/Toast'
 import type { Match, MatchPhase } from '@/lib/types'
 
 const STATUS_BADGE: Record<string, string> = {
+  planned: 'bg-blue-900 text-blue-300',
   pending: 'bg-slate-600 text-slate-200',
   live: 'bg-red-600 text-white animate-pulse',
   done: 'bg-slate-700 text-slate-400',
 }
 
 const STATUS_LABEL: Record<string, string> = {
+  planned: '📋 Pianificata',
   pending: 'In attesa',
   live: 'LIVE',
   done: 'Terminata',
@@ -44,6 +46,7 @@ export default function DashboardPage() {
   const [matches, setMatches] = useState<Match[]>([])
   const [loading, setLoading] = useState(true)
   const [showNew, setShowNew] = useState(false)
+  const [showPlan, setShowPlan] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<Match | null>(null)
   const preloaded = useRef(false)
 
@@ -125,6 +128,38 @@ export default function DashboardPage() {
     router.push(`/match/${newMatch.id}/lineup`)
   }
 
+  const handleCreatePlan = async (data: {
+    opponent: string
+    scheduled_time: string
+    half_duration_mins: number
+    phase: MatchPhase
+  }) => {
+    const sb = getSupabase()
+    const payload: Record<string, unknown> = {
+      opponent: data.opponent,
+      half_duration_mins: data.half_duration_mins,
+      phase: data.phase,
+      status: 'planned',
+      score_us: 0,
+      score_them: 0,
+    }
+    if (data.scheduled_time) payload.scheduled_time = data.scheduled_time
+
+    const { data: newMatch, error } = await sb
+      .from('matches')
+      .insert(payload)
+      .select()
+      .single()
+
+    if (error) {
+      showToast('Errore creazione pianificazione', 'error')
+      return
+    }
+
+    setShowPlan(false)
+    router.push(`/match/${newMatch.id}/plan`)
+  }
+
   const handleDelete = async () => {
     if (!deleteTarget) return
     const sb = getSupabase()
@@ -154,12 +189,20 @@ export default function DashboardPage() {
             <h1 className="text-xl font-black text-white">SEXTACY</h1>
             <p className="text-green-400 text-xs font-semibold">MANAGER</p>
           </div>
-          <button
-            onClick={() => setShowNew(true)}
-            className="bg-green-700 active:bg-green-800 text-white font-bold px-4 py-2.5 rounded-xl text-sm"
-          >
-            + Nuova Partita
-          </button>
+          <div className="flex flex-col gap-1.5">
+            <button
+              onClick={() => setShowNew(true)}
+              className="bg-green-700 active:bg-green-800 text-white font-bold px-3 py-2 rounded-xl text-xs"
+            >
+              + Nuova Partita
+            </button>
+            <button
+              onClick={() => setShowPlan(true)}
+              className="bg-blue-800 active:bg-blue-900 text-white font-bold px-3 py-2 rounded-xl text-xs"
+            >
+              📋 Programma
+            </button>
+          </div>
         </div>
       </header>
 
@@ -196,7 +239,7 @@ export default function DashboardPage() {
                       <p className="text-slate-400 text-xs mt-0.5">{formatTime(match.scheduled_time)}</p>
                     )}
                   </div>
-                  {match.status !== 'pending' && (
+                  {(match.status === 'live' || match.status === 'done') && (
                     <div className="text-right ml-3">
                       <span className="text-3xl font-black text-white font-mono">
                         {match.score_us}–{match.score_them}
@@ -206,6 +249,22 @@ export default function DashboardPage() {
                 </div>
 
                 <div className="flex border-t border-slate-700">
+                  {match.status === 'planned' && (
+                    <>
+                      <Link
+                        href={`/match/${match.id}/plan`}
+                        className="flex-1 py-3 text-center text-sm font-semibold text-blue-400 active:bg-slate-700"
+                      >
+                        ✏️ Modifica
+                      </Link>
+                      <button
+                        onClick={() => router.push(`/match/${match.id}/lineup`)}
+                        className="flex-1 py-3 text-center text-sm font-bold text-green-400 active:bg-slate-700 border-l border-slate-700"
+                      >
+                        ▶ Inizia
+                      </button>
+                    </>
+                  )}
                   {match.status === 'pending' && (
                     <Link
                       href={`/match/${match.id}/lineup`}
@@ -249,6 +308,14 @@ export default function DashboardPage() {
         isOpen={showNew}
         onClose={() => setShowNew(false)}
         onSubmit={handleCreateMatch}
+      />
+
+      <NewMatchModal
+        isOpen={showPlan}
+        title="Pianifica Partita"
+        submitLabel="📋 Pianifica"
+        onClose={() => setShowPlan(false)}
+        onSubmit={handleCreatePlan}
       />
 
       <ConfirmDialog

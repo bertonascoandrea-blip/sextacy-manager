@@ -9,6 +9,8 @@ const TOURNAMENT_DATE = '2026-06-06'
 interface NewMatchModalProps {
   isOpen: boolean
   onClose: () => void
+  title?: string
+  submitLabel?: string
   onSubmit: (data: {
     opponent: string
     scheduled_time: string
@@ -17,7 +19,13 @@ interface NewMatchModalProps {
   }) => Promise<void>
 }
 
-export function NewMatchModal({ isOpen, onClose, onSubmit }: NewMatchModalProps) {
+export function NewMatchModal({
+  isOpen,
+  onClose,
+  title = 'Nuova Partita',
+  submitLabel = 'Crea Partita',
+  onSubmit,
+}: NewMatchModalProps) {
   const [opponent, setOpponent] = useState('')
   const [customOpponent, setCustomOpponent] = useState('')
   const [timeValue, setTimeValue] = useState('')
@@ -34,7 +42,6 @@ export function NewMatchModal({ isOpen, onClose, onSubmit }: NewMatchModalProps)
     if (!finalOpponent.trim()) return
     setLoading(true)
     try {
-      // Construct ISO datetime with Italian timezone (CEST = +02:00)
       const scheduled_time = timeValue
         ? `${TOURNAMENT_DATE}T${timeValue}:00+02:00`
         : ''
@@ -60,7 +67,7 @@ export function NewMatchModal({ isOpen, onClose, onSubmit }: NewMatchModalProps)
       <div className="w-full max-w-sm bg-slate-800 rounded-2xl border border-slate-700 p-6 shadow-xl">
         <div className="flex items-center justify-between mb-5">
           <div>
-            <h2 className="text-lg font-bold text-white">Nuova Partita</h2>
+            <h2 className="text-lg font-bold text-white">{title}</h2>
             <p className="text-slate-500 text-xs mt-0.5">📅 6 giugno 2026</p>
           </div>
           <button onClick={onClose} className="text-slate-400 text-2xl leading-none">&times;</button>
@@ -146,7 +153,7 @@ export function NewMatchModal({ isOpen, onClose, onSubmit }: NewMatchModalProps)
             disabled={loading || !finalOpponent.trim()}
             className="w-full py-3 bg-green-700 active:bg-green-800 disabled:bg-slate-600 rounded-xl text-white font-semibold mt-2"
           >
-            {loading ? 'Creazione...' : 'Crea Partita'}
+            {loading ? 'Attendere...' : submitLabel}
           </button>
         </form>
       </div>

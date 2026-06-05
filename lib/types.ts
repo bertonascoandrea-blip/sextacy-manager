@@ -1,4 +1,4 @@
-export type MatchStatus = 'pending' | 'live' | 'done'
+export type MatchStatus = 'planned' | 'pending' | 'live' | 'done'
 export type MatchPhase = 'girone' | 'playoff' | 'quarti' | 'semi' | 'finale'
 export type EventType = 'goal' | 'goal_opp' | 'yellow' | 'red' | 'sub' | 'assist'
 
@@ -19,6 +19,7 @@ export interface Match {
   score_them: number
   status: MatchStatus
   phase: MatchPhase
+  notes: string | null
   created_at: string
 }
 
