@@ -14,6 +14,7 @@ export default function LineupPage() {
   const [match, setMatch] = useState<Match | null>(null)
   const [players, setPlayers] = useState<Player[]>([])
   const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [starters, setStarters] = useState<Set<string>>(new Set())
   const [captain, setCaptain] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -34,6 +35,10 @@ export default function LineupPage() {
     if (playersData) setPlayers(playersData)
     if (existingLineup && existingLineup.length > 0) {
       setSelected(new Set(existingLineup.map((l: { player_id: string }) => l.player_id)))
+      // Cap starters at 5: if old data saved everyone as starter, only first 5 (by name) start
+      const allStarters = existingLineup.filter((l: { is_starter: boolean }) => l.is_starter)
+      const cappedStarters = allStarters.slice(0, 5)
+      setStarters(new Set(cappedStarters.map((l: { player_id: string }) => l.player_id)))
       const cap = existingLineup.find((l: { is_captain: boolean }) => l.is_captain)
       if (cap) setCaptain(cap.player_id)
     }
@@ -47,9 +52,21 @@ export default function LineupPage() {
       if (next.has(playerId)) {
         next.delete(playerId)
         if (captain === playerId) setCaptain(null)
+        setStarters(s => { const ns = new Set(s); ns.delete(playerId); return ns })
       } else {
         next.add(playerId)
+        // Auto-bench if already have 5 starters (5vs5 format)
+        setStarters(s => s.size < 5 ? new Set([...s, playerId]) : s)
       }
+      return next
+    })
+  }
+
+  const toggleStarter = (playerId: string) => {
+    setStarters(prev => {
+      const next = new Set(prev)
+      if (next.has(playerId)) next.delete(playerId)
+      else next.add(playerId)
       return next
     })
   }
@@ -68,7 +85,7 @@ export default function LineupPage() {
       match_id: id,
       player_id: pid,
       is_captain: pid === captain,
-      is_starter: true,
+      is_starter: starters.has(pid),
     }))
 
     const { error } = await sb.from('match_lineups').insert(rows)
@@ -109,6 +126,11 @@ export default function LineupPage() {
         <div className="bg-slate-800 rounded-2xl border border-slate-700 p-4 mb-4">
           <p className="text-slate-400 text-sm">
             Selezionati: <span className="text-white font-bold">{selected.size}</span> giocatori
+            {' · '}
+            <span className="text-green-400 font-bold">{starters.size} titolari</span>
+            {selected.size - starters.size > 0 && (
+              <span className="text-slate-400"> · {selected.size - starters.size} panchina</span>
+            )}
           </p>
           {captain && (
             <p className="text-yellow-400 text-xs mt-1">
@@ -148,16 +170,28 @@ export default function LineupPage() {
                 </div>
 
                 {isSelected && (
-                  <button
-                    onClick={() => setCaptain(isCaptain ? null : player.id)}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold border ${
-                      isCaptain
-                        ? 'bg-yellow-500 border-yellow-400 text-black'
-                        : 'bg-slate-700 border-slate-600 text-slate-300'
-                    }`}
-                  >
-                    {isCaptain ? '© Cap' : 'Cap?'}
-                  </button>
+                  <div className="flex gap-2 flex-shrink-0">
+                    <button
+                      onClick={() => toggleStarter(player.id)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold border ${
+                        starters.has(player.id)
+                          ? 'bg-green-700 border-green-600 text-white'
+                          : 'bg-slate-700 border-slate-600 text-slate-400'
+                      }`}
+                    >
+                      {starters.has(player.id) ? 'Titolare' : 'Panchina'}
+                    </button>
+                    <button
+                      onClick={() => setCaptain(isCaptain ? null : player.id)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold border ${
+                        isCaptain
+                          ? 'bg-yellow-500 border-yellow-400 text-black'
+                          : 'bg-slate-700 border-slate-600 text-slate-300'
+                      }`}
+                    >
+                      {isCaptain ? '© Cap' : 'Cap?'}
+                    </button>
+                  </div>
                 )}
               </div>
             )

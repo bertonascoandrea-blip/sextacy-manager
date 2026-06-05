@@ -84,13 +84,14 @@ export default function LivePage() {
   useEffect(() => {
     const loadData = async () => {
       const sb = getSupabase()
-      const [{ data: matchData }, { data: lineupData }, { data: eventsData }] = await Promise.all([
+      const [{ data: matchData }, { data: lineupData }, { data: eventsData }, { data: allPlayersData }] = await Promise.all([
         sb.from('matches').select('*').eq('id', id).single(),
         sb.from('match_lineups').select('*, player:players(*)').eq('match_id', id),
         sb.from('events')
           .select('*, player:players!events_player_id_fkey(*), player_out:players!events_player_out_id_fkey(*)')
           .eq('match_id', id)
           .order('created_at'),
+        sb.from('players').select('*').order('name'),
       ])
 
       if (matchData) {
@@ -100,12 +101,16 @@ export default function LivePage() {
         setRemainingSeconds(matchData.half_duration_mins * 60)
       }
 
-      if (lineupData) {
-        const players: Player[] = lineupData.map((l: { player: Player }) => l.player)
-        setSquadPlayers(players)
+      // Always load full squad (all 7 players) so bench players are always available
+      if (allPlayersData) setSquadPlayers(allPlayersData as Player[])
 
-        // Reconstruct who's on field: start with all lineup players, apply subs
-        const ids = new Set(lineupData.map((l: { player_id: string }) => l.player_id))
+      if (lineupData) {
+        // On-field = starters only (is_starter: true). Apply any subs already recorded.
+        const ids = new Set(
+          lineupData
+            .filter((l: { is_starter: boolean }) => l.is_starter)
+            .map((l: { player_id: string }) => l.player_id)
+        )
         if (eventsData) {
           eventsData
             .filter((e: { type: string }) => e.type === 'sub')
@@ -228,12 +233,6 @@ export default function LivePage() {
         next.add(playerInId)
         return next
       })
-      // If incoming player not yet in squad display, add them
-      const incomingPlayer = squadPlayers.find(p => p.id === playerInId)
-      if (!incomingPlayer) {
-        const { data: pData } = await sb.from('players').select('*').eq('id', playerInId).single()
-        if (pData) setSquadPlayers(prev => [...prev, pData as Player])
-      }
     }
 
     showToast(`${EVENT_LOG_LABEL[picker.type]} registrato!`, 'success')
