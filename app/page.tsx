@@ -30,12 +30,12 @@ const PHASE_LABEL: Record<string, string> = {
   finale: 'Finale',
 }
 
-// Morning matches for tournament day (8 giugno 2026, orario italiano)
+// Morning matches for tournament day (6 giugno 2026, orario italiano CEST +02:00)
 const MORNING_MATCHES = [
-  { opponent: 'Cunico FC',    scheduled_time: '2026-06-08T08:30:00+02:00', half_duration_mins: 12, phase: 'girone' as MatchPhase },
-  { opponent: 'Porceddus FC', scheduled_time: '2026-06-08T09:30:00+02:00', half_duration_mins: 12, phase: 'girone' as MatchPhase },
-  { opponent: 'Los Mantos',   scheduled_time: '2026-06-08T11:00:00+02:00', half_duration_mins: 12, phase: 'girone' as MatchPhase },
-  { opponent: 'GDB',          scheduled_time: '2026-06-08T12:30:00+02:00', half_duration_mins: 12, phase: 'girone' as MatchPhase },
+  { opponent: 'Cunico FC',    scheduled_time: '2026-06-06T08:30:00+02:00', half_duration_mins: 12, phase: 'girone' as MatchPhase },
+  { opponent: 'Porceddus FC', scheduled_time: '2026-06-06T09:30:00+02:00', half_duration_mins: 12, phase: 'girone' as MatchPhase },
+  { opponent: 'Los Mantos',   scheduled_time: '2026-06-06T11:00:00+02:00', half_duration_mins: 12, phase: 'girone' as MatchPhase },
+  { opponent: 'GDB',          scheduled_time: '2026-06-06T12:30:00+02:00', half_duration_mins: 12, phase: 'girone' as MatchPhase },
 ]
 
 export default function DashboardPage() {

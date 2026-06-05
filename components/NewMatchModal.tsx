@@ -4,6 +4,8 @@ import { useState } from 'react'
 import { OPPONENT_TEAMS, PHASES } from '@/lib/constants'
 import type { MatchPhase } from '@/lib/types'
 
+const TOURNAMENT_DATE = '2026-06-06'
+
 interface NewMatchModalProps {
   isOpen: boolean
   onClose: () => void
@@ -18,7 +20,7 @@ interface NewMatchModalProps {
 export function NewMatchModal({ isOpen, onClose, onSubmit }: NewMatchModalProps) {
   const [opponent, setOpponent] = useState('')
   const [customOpponent, setCustomOpponent] = useState('')
-  const [scheduledTime, setScheduledTime] = useState('')
+  const [timeValue, setTimeValue] = useState('')
   const [halfDuration, setHalfDuration] = useState(12)
   const [phase, setPhase] = useState<MatchPhase>('girone')
   const [loading, setLoading] = useState(false)
@@ -32,15 +34,20 @@ export function NewMatchModal({ isOpen, onClose, onSubmit }: NewMatchModalProps)
     if (!finalOpponent.trim()) return
     setLoading(true)
     try {
+      // Construct ISO datetime with Italian timezone (CEST = +02:00)
+      const scheduled_time = timeValue
+        ? `${TOURNAMENT_DATE}T${timeValue}:00+02:00`
+        : ''
+
       await onSubmit({
         opponent: finalOpponent.trim(),
-        scheduled_time: scheduledTime,
+        scheduled_time,
         half_duration_mins: halfDuration,
         phase,
       })
       setOpponent('')
       setCustomOpponent('')
-      setScheduledTime('')
+      setTimeValue('')
       setHalfDuration(12)
       setPhase('girone')
     } finally {
@@ -52,7 +59,10 @@ export function NewMatchModal({ isOpen, onClose, onSubmit }: NewMatchModalProps)
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/70 px-4 pb-4 sm:pb-0">
       <div className="w-full max-w-sm bg-slate-800 rounded-2xl border border-slate-700 p-6 shadow-xl">
         <div className="flex items-center justify-between mb-5">
-          <h2 className="text-lg font-bold text-white">Nuova Partita</h2>
+          <div>
+            <h2 className="text-lg font-bold text-white">Nuova Partita</h2>
+            <p className="text-slate-500 text-xs mt-0.5">📅 6 giugno 2026</p>
+          </div>
           <button onClick={onClose} className="text-slate-400 text-2xl leading-none">&times;</button>
         </div>
 
@@ -103,9 +113,9 @@ export function NewMatchModal({ isOpen, onClose, onSubmit }: NewMatchModalProps)
           <div>
             <label className="text-xs text-slate-400 mb-1 block">Orario (opzionale)</label>
             <input
-              type="datetime-local"
-              value={scheduledTime}
-              onChange={e => setScheduledTime(e.target.value)}
+              type="time"
+              value={timeValue}
+              onChange={e => setTimeValue(e.target.value)}
               className="w-full bg-slate-700 border border-slate-600 rounded-xl px-3 py-3 text-white text-sm"
             />
           </div>
@@ -118,7 +128,7 @@ export function NewMatchModal({ isOpen, onClose, onSubmit }: NewMatchModalProps)
                 onClick={() => setHalfDuration(d => Math.max(1, d - 1))}
                 className="w-12 h-12 bg-slate-700 rounded-xl text-white text-xl font-bold active:bg-slate-600"
               >
-                -
+                −
               </button>
               <span className="flex-1 text-center text-2xl font-bold text-white">{halfDuration}</span>
               <button
