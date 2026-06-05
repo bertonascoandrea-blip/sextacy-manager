@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { getSupabase } from '@/lib/supabase'
@@ -30,6 +30,14 @@ const PHASE_LABEL: Record<string, string> = {
   finale: 'Finale',
 }
 
+// Morning matches for tournament day (8 giugno 2026, orario italiano)
+const MORNING_MATCHES = [
+  { opponent: 'Cunico FC',    scheduled_time: '2026-06-08T08:30:00+02:00', half_duration_mins: 12, phase: 'girone' as MatchPhase },
+  { opponent: 'Porceddus FC', scheduled_time: '2026-06-08T09:30:00+02:00', half_duration_mins: 12, phase: 'girone' as MatchPhase },
+  { opponent: 'Los Mantos',   scheduled_time: '2026-06-08T11:00:00+02:00', half_duration_mins: 12, phase: 'girone' as MatchPhase },
+  { opponent: 'GDB',          scheduled_time: '2026-06-08T12:30:00+02:00', half_duration_mins: 12, phase: 'girone' as MatchPhase },
+]
+
 export default function DashboardPage() {
   const router = useRouter()
   const { showToast } = useToast()
@@ -37,6 +45,7 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true)
   const [showNew, setShowNew] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<Match | null>(null)
+  const preloaded = useRef(false)
 
   useEffect(() => {
     loadMatches()
@@ -47,14 +56,39 @@ export default function DashboardPage() {
     const { data, error } = await sb
       .from('matches')
       .select('*')
+      .order('scheduled_time', { ascending: true, nullsFirst: false })
       .order('created_at', { ascending: false })
 
     if (error) {
       showToast('Errore caricamento partite', 'error')
-    } else {
-      setMatches(data || [])
+      setLoading(false)
+      return
     }
+
+    const list = data || []
+    setMatches(list)
     setLoading(false)
+
+    // Pre-load morning matches only once, only if DB is empty
+    if (list.length === 0 && !preloaded.current) {
+      preloaded.current = true
+      await seedMorningMatches()
+    }
+  }
+
+  const seedMorningMatches = async () => {
+    const sb = getSupabase()
+    const rows = MORNING_MATCHES.map(m => ({ ...m, status: 'pending', score_us: 0, score_them: 0 }))
+    const { data, error } = await sb.from('matches').insert(rows).select()
+    if (error) {
+      showToast('Errore pre-caricamento partite', 'error')
+    } else {
+      setMatches((data || []).sort(
+        (a: Match, b: Match) =>
+          new Date(a.scheduled_time ?? 0).getTime() - new Date(b.scheduled_time ?? 0).getTime()
+      ))
+      showToast('Partite del girone pre-caricate!', 'success')
+    }
   }
 
   const handleCreateMatch = async (data: {
@@ -177,7 +211,7 @@ export default function DashboardPage() {
                       href={`/match/${match.id}/lineup`}
                       className="flex-1 py-3 text-center text-sm font-semibold text-green-400 active:bg-slate-700"
                     >
-                      Formazione
+                      Formazione →
                     </Link>
                   )}
                   {match.status === 'live' && (
@@ -199,9 +233,9 @@ export default function DashboardPage() {
                   {match.status !== 'live' && (
                     <button
                       onClick={() => setDeleteTarget(match)}
-                      className="px-4 py-3 text-red-500 text-sm border-l border-slate-700 active:bg-slate-700"
+                      className="px-5 py-3 text-red-500 text-sm border-l border-slate-700 active:bg-slate-700 active:text-red-400"
                     >
-                      Elimina
+                      🗑
                     </button>
                   )}
                 </div>
@@ -220,7 +254,7 @@ export default function DashboardPage() {
       <ConfirmDialog
         isOpen={!!deleteTarget}
         title="Elimina partita"
-        message={`Eliminare la partita contro ${deleteTarget?.opponent}? Questa azione non può essere annullata.`}
+        message={`Eliminare la partita contro ${deleteTarget?.opponent}? Tutti gli eventi associati verranno cancellati.`}
         confirmLabel="Elimina"
         danger
         onConfirm={handleDelete}

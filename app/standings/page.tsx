@@ -4,10 +4,17 @@ import { useEffect, useState, useCallback } from 'react'
 import { getSupabase } from '@/lib/supabase'
 import { NavBar } from '@/components/NavBar'
 import { useToast } from '@/components/Toast'
-import type { Standing } from '@/lib/types'
+import type { Standing, Match } from '@/lib/types'
 
-const FIELDS: { key: keyof Standing; label: string; short: string }[] = [
-  { key: 'played', label: 'Partite', short: 'G' },
+interface DisplayStanding extends Standing {
+  diff: number
+  isAuto: boolean
+}
+
+type NumericStandingKey = 'played' | 'won' | 'drawn' | 'lost' | 'goals_for' | 'goals_against' | 'points'
+
+const EDITABLE_FIELDS: { key: NumericStandingKey; label: string; short: string }[] = [
+  { key: 'played', label: 'Giocate', short: 'G' },
   { key: 'won', label: 'Vittorie', short: 'V' },
   { key: 'drawn', label: 'Pareggi', short: 'P' },
   { key: 'lost', label: 'Sconfitte', short: 'S' },
@@ -18,33 +25,80 @@ const FIELDS: { key: keyof Standing; label: string; short: string }[] = [
 
 interface EditState {
   id: string
-  field: keyof Standing
+  teamName: string
+  field: NumericStandingKey
   value: number
 }
 
+// Tiebreaker order: punti > scontro diretto (manual) > diff reti > vittorie > gf > ga > nome
+function sortGroup(teams: DisplayStanding[]): DisplayStanding[] {
+  return [...teams].sort((a, b) => {
+    if (b.points !== a.points) return b.points - a.points
+    if (b.diff !== a.diff) return b.diff - a.diff
+    if (b.won !== a.won) return b.won - a.won
+    if (b.goals_for !== a.goals_for) return b.goals_for - a.goals_for
+    if (a.goals_against !== b.goals_against) return a.goals_against - b.goals_against
+    return a.team_name.localeCompare(b.team_name)
+  })
+}
+
+const QUAL_COLORS = [
+  'border-l-4 border-l-green-500',   // 1° - diritto quarti
+  'border-l-4 border-l-green-500',   // 2° - diritto quarti
+  'border-l-4 border-l-green-500',   // 3° - diritto quarti
+  'border-l-4 border-l-yellow-500',  // 4° - playoff
+  'border-l-4 border-l-red-600',     // 5° - playoff
+]
+
 export default function StandingsPage() {
   const { showToast } = useToast()
-  const [group1, setGroup1] = useState<Standing[]>([])
-  const [group2, setGroup2] = useState<Standing[]>([])
+  const [group1, setGroup1] = useState<DisplayStanding[]>([])
+  const [group2, setGroup2] = useState<DisplayStanding[]>([])
   const [loading, setLoading] = useState(true)
   const [editing, setEditing] = useState<EditState | null>(null)
   const [saving, setSaving] = useState(false)
 
   const loadData = useCallback(async () => {
     const sb = getSupabase()
-    const { data } = await sb.from('standings').select('*').order('points', { ascending: false })
-    if (data) {
-      setGroup1(data.filter((s: Standing) => s.group_name === '1').sort((a: Standing, b: Standing) => b.points - a.points))
-      setGroup2(data.filter((s: Standing) => s.group_name === '2').sort((a: Standing, b: Standing) => b.points - a.points))
-    }
+    const [{ data: standingsData }, { data: matchesData }] = await Promise.all([
+      sb.from('standings').select('*'),
+      sb.from('matches').select('*').eq('status', 'done'),
+    ])
+
+    if (!standingsData) { setLoading(false); return }
+
+    // Auto-calculate Sextacy's stats from completed matches
+    const sextacy = (matchesData as Match[] || []).reduce(
+      (acc, m) => {
+        acc.played++
+        acc.goals_for += m.score_us
+        acc.goals_against += m.score_them
+        if (m.score_us > m.score_them) { acc.won++; acc.points += 3 }
+        else if (m.score_us === m.score_them) { acc.drawn++; acc.points += 1 }
+        else acc.lost++
+        return acc
+      },
+      { played: 0, won: 0, drawn: 0, lost: 0, goals_for: 0, goals_against: 0, points: 0 }
+    )
+
+    const display: DisplayStanding[] = (standingsData as Standing[]).map(s => {
+      const base = s.team_name === 'Sextacy' ? { ...s, ...sextacy } : s
+      return { ...base, diff: base.goals_for - base.goals_against, isAuto: s.team_name === 'Sextacy' }
+    })
+
+    setGroup1(sortGroup(display.filter(s => s.group_name === '1')))
+    setGroup2(sortGroup(display.filter(s => s.group_name === '2')))
     setLoading(false)
   }, [])
 
   useEffect(() => { loadData() }, [loadData])
 
-  const handleCellTap = (standing: Standing, field: keyof Standing) => {
-    if (field === 'id' || field === 'team_name' || field === 'group_name' || field === 'updated_at') return
-    setEditing({ id: standing.id, field, value: standing[field] as number })
+  const handleCellTap = (standing: DisplayStanding, field: NumericStandingKey) => {
+    if (standing.isAuto) {
+      showToast('Le statistiche di Sextacy sono calcolate automaticamente', 'info')
+      return
+    }
+    setEditing({ id: standing.id, teamName: standing.team_name, field, value: standing[field] })
   }
 
   const handleSave = async () => {
@@ -66,19 +120,29 @@ export default function StandingsPage() {
     setEditing(null)
   }
 
-  const StandingsTable = ({ teams, groupLabel }: { teams: Standing[]; groupLabel: string }) => (
+  const GroupTable = ({ teams, groupNum }: { teams: DisplayStanding[]; groupNum: string }) => (
     <div className="bg-slate-800 rounded-2xl border border-slate-700 overflow-hidden mb-4">
-      <div className="px-4 py-3 border-b border-slate-700">
-        <h2 className="text-sm font-bold text-white">Girone {groupLabel}</h2>
-        <p className="text-slate-500 text-xs mt-0.5">Tocca un valore per modificarlo</p>
+      <div className="px-4 py-3 border-b border-slate-700 flex items-center justify-between">
+        <div>
+          <h2 className="text-sm font-bold text-white">Girone {groupNum}</h2>
+          <p className="text-slate-500 text-xs mt-0.5">Tocca cella per modificare · ✨ = auto da DB</p>
+        </div>
+        <div className="flex flex-col gap-0.5 text-right">
+          <p className="text-xs text-green-400">▋ Quarti (1°–3°)</p>
+          <p className="text-xs text-yellow-400">▋ Playoff (4°–5°)</p>
+        </div>
       </div>
+
       <div className="overflow-x-auto">
-        <table className="w-full text-xs">
+        <table className="w-full text-xs min-w-[340px]">
           <thead>
-            <tr className="text-slate-500 border-b border-slate-700">
-              <th className="text-left px-3 py-2 min-w-[100px]">Squadra</th>
-              {FIELDS.map(f => (
-                <th key={f.key} className="text-center px-2 py-2 min-w-[36px]">{f.short}</th>
+            <tr className="text-slate-500 border-b border-slate-700 bg-slate-900/30">
+              <th className="text-left pl-4 pr-2 py-2 w-6">#</th>
+              <th className="text-left px-2 py-2">Squadra</th>
+              {EDITABLE_FIELDS.map(f => (
+                <th key={f.key} className={`text-center px-1.5 py-2 ${f.key === 'points' ? 'font-bold text-slate-300' : ''}`}>
+                  {f.short}
+                </th>
               ))}
             </tr>
           </thead>
@@ -86,34 +150,51 @@ export default function StandingsPage() {
             {teams.map((standing, i) => (
               <tr
                 key={standing.id}
-                className={`border-b border-slate-700/50 ${standing.team_name === 'Sextacy' ? 'bg-green-900/20' : ''}`}
+                className={`border-b border-slate-700/40 ${QUAL_COLORS[i] ?? ''} ${
+                  standing.team_name === 'Sextacy' ? 'bg-green-900/15' : ''
+                }`}
               >
-                <td className="px-3 py-3">
-                  <div className="flex items-center gap-2">
-                    <span className="text-slate-500 w-4">{i + 1}</span>
-                    <span className={`font-semibold ${standing.team_name === 'Sextacy' ? 'text-green-400' : 'text-white'}`}>
+                <td className="pl-4 pr-2 py-3 text-slate-500 font-mono">{i + 1}</td>
+                <td className="px-2 py-3">
+                  <div className="flex items-center gap-1.5">
+                    <span className={`font-semibold truncate max-w-[90px] ${
+                      standing.team_name === 'Sextacy' ? 'text-green-300' : 'text-white'
+                    }`}>
                       {standing.team_name}
                     </span>
+                    {standing.isAuto && <span className="text-green-500 text-[9px]">✨</span>}
                   </div>
                 </td>
-                {FIELDS.map(f => (
-                  <td key={f.key} className="text-center px-2 py-3">
-                    <button
-                      onClick={() => handleCellTap(standing, f.key)}
-                      className={`w-8 h-8 rounded-lg text-sm font-bold transition-colors active:bg-slate-600 ${
-                        f.key === 'points'
-                          ? 'bg-green-800 text-green-200'
-                          : 'bg-slate-700 text-slate-200'
-                      }`}
-                    >
-                      {standing[f.key] as number}
-                    </button>
-                  </td>
-                ))}
+                {EDITABLE_FIELDS.map(f => {
+                  const val = standing[f.key]
+                  const isPoints = f.key === 'points'
+                  return (
+                    <td key={f.key} className="text-center px-1 py-3">
+                      <button
+                        onClick={() => handleCellTap(standing, f.key)}
+                        disabled={standing.isAuto}
+                        className={`w-7 h-7 rounded-lg text-xs font-bold transition-colors ${
+                          standing.isAuto
+                            ? 'cursor-default text-slate-300'
+                            : 'active:bg-slate-600 cursor-pointer'
+                        } ${isPoints ? 'bg-green-800/60 text-green-200' : 'bg-slate-700 text-slate-200'}`}
+                      >
+                        {val}
+                      </button>
+                    </td>
+                  )
+                })}
               </tr>
             ))}
           </tbody>
         </table>
+      </div>
+
+      {/* Tiebreaker note */}
+      <div className="px-4 py-2 border-t border-slate-700/50 bg-slate-900/20">
+        <p className="text-slate-600 text-[10px]">
+          Criteri: Pt → Scontro diretto → Diff reti → V → GF → GS → Sorteggio
+        </p>
       </div>
     </div>
   )
@@ -134,8 +215,8 @@ export default function StandingsPage() {
           </div>
         ) : (
           <>
-            <StandingsTable teams={group1} groupLabel="1" />
-            <StandingsTable teams={group2} groupLabel="2" />
+            <GroupTable teams={group1} groupNum="1" />
+            <GroupTable teams={group2} groupNum="2" />
           </>
         )}
       </main>
@@ -143,13 +224,11 @@ export default function StandingsPage() {
       {/* Edit modal */}
       {editing && (
         <div className="fixed inset-0 z-50 flex items-end bg-black/70">
-          <div className="w-full bg-slate-800 rounded-t-3xl border-t border-slate-700 p-6 pb-10">
-            <h3 className="text-lg font-bold text-white mb-1">
-              {FIELDS.find(f => f.key === editing.field)?.label}
+          <div className="w-full bg-slate-800 rounded-t-3xl border-t border-slate-700 p-6 pb-10 max-w-lg mx-auto">
+            <h3 className="text-base font-bold text-white">
+              {editing.teamName} — {EDITABLE_FIELDS.find(f => f.key === editing.field)?.label}
             </h3>
-            <p className="text-slate-400 text-sm mb-4">
-              Inserisci il nuovo valore
-            </p>
+            <p className="text-slate-400 text-sm mb-5 mt-0.5">Modifica valore manuale</p>
 
             <div className="flex items-center gap-4 mb-6">
               <button
@@ -162,7 +241,7 @@ export default function StandingsPage() {
                 type="number"
                 min="0"
                 value={editing.value}
-                onChange={e => setEditing(prev => prev ? { ...prev, value: parseInt(e.target.value) || 0 } : null)}
+                onChange={e => setEditing(prev => prev ? { ...prev, value: Math.max(0, parseInt(e.target.value) || 0) } : null)}
                 className="flex-1 bg-slate-700 border border-slate-600 rounded-2xl text-center text-3xl font-black text-white py-3 focus:outline-none focus:border-green-500"
               />
               <button

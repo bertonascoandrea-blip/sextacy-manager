@@ -6,8 +6,9 @@ import { getSupabase } from '@/lib/supabase'
 
 const links = [
   { href: '/', label: 'Home', icon: '🏠' },
-  { href: '/players', label: 'Giocatori', icon: '👤' },
-  { href: '/standings', label: 'Classifica', icon: '📊' },
+  { href: '/players', label: 'Rosa', icon: '👥' },
+  { href: '/standings', label: 'Girone', icon: '📊' },
+  { href: '/regolamento', label: 'Regole', icon: '📋' },
 ]
 
 export function NavBar() {
@@ -28,21 +29,21 @@ export function NavBar() {
           <Link
             key={link.href}
             href={link.href}
-            className={`flex flex-col items-center gap-1 py-3 px-4 flex-1 text-xs font-medium transition-colors ${
+            className={`flex flex-col items-center gap-0.5 py-2.5 px-2 flex-1 text-[10px] font-medium transition-colors ${
               pathname === link.href
                 ? 'text-green-400'
                 : 'text-slate-400 active:text-slate-200'
             }`}
           >
-            <span className="text-xl">{link.icon}</span>
+            <span className="text-lg">{link.icon}</span>
             <span>{link.label}</span>
           </Link>
         ))}
         <button
           onClick={handleLogout}
-          className="flex flex-col items-center gap-1 py-3 px-4 flex-1 text-xs font-medium text-slate-400 active:text-slate-200"
+          className="flex flex-col items-center gap-0.5 py-2.5 px-2 flex-1 text-[10px] font-medium text-slate-400 active:text-slate-200"
         >
-          <span className="text-xl">🚪</span>
+          <span className="text-lg">🚪</span>
           <span>Esci</span>
         </button>
       </div>

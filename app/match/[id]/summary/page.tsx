@@ -5,6 +5,8 @@ import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { getSupabase } from '@/lib/supabase'
 import { NavBar } from '@/components/NavBar'
+import { ConfirmDialog } from '@/components/ConfirmDialog'
+import { useToast } from '@/components/Toast'
 import type { Match, MatchEvent, Player, MatchLineup } from '@/lib/types'
 
 const EVENT_LABEL: Record<string, string> = {
@@ -16,14 +18,22 @@ const EVENT_LABEL: Record<string, string> = {
   sub: '🔄 Cambio',
 }
 
+const PHASE_LABEL: Record<string, string> = {
+  girone: 'Girone', playoff: 'Playoff', quarti: 'Quarti',
+  semi: 'Semifinale', finale: 'Finale',
+}
+
 export default function SummaryPage() {
   const { id } = useParams<{ id: string }>()
   const router = useRouter()
+  const { showToast } = useToast()
 
   const [match, setMatch] = useState<Match | null>(null)
   const [events, setEvents] = useState<MatchEvent[]>([])
   const [lineup, setLineup] = useState<MatchLineup[]>([])
   const [loading, setLoading] = useState(true)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [deleting, setDeleting] = useState(false)
 
   useEffect(() => {
     loadData()
@@ -46,6 +56,21 @@ export default function SummaryPage() {
     setLoading(false)
   }
 
+  const handleDelete = async () => {
+    if (!match) return
+    setDeleting(true)
+    const sb = getSupabase()
+    const { error } = await sb.from('matches').delete().eq('id', id)
+    if (error) {
+      showToast('Errore eliminazione', 'error')
+      setDeleting(false)
+      setShowDeleteConfirm(false)
+      return
+    }
+    showToast('Partita eliminata', 'info')
+    router.push('/')
+  }
+
   const getPlayerMinutes = (playerId: string) => {
     const halfDur = match?.half_duration_mins ?? 12
     const totalMins = halfDur * 2
@@ -57,22 +82,10 @@ export default function SummaryPage() {
     return wasInLineup ? totalMins : 0
   }
 
-  const getPlayerGoals = (playerId: string) =>
-    events.filter(e => e.type === 'goal' && e.player_id === playerId).length
-
-  const getPlayerAssists = (playerId: string) =>
-    events.filter(e => e.type === 'assist' && e.player_id === playerId).length
-
-  const getPlayerYellows = (playerId: string) =>
-    events.filter(e => e.type === 'yellow' && e.player_id === playerId).length
-
-  const getPlayerReds = (playerId: string) =>
-    events.filter(e => e.type === 'red' && e.player_id === playerId).length
-
-  const formatPhase: Record<string, string> = {
-    girone: 'Girone', playoff: 'Playoff', quarti: 'Quarti',
-    semi: 'Semifinale', finale: 'Finale',
-  }
+  const getPlayerGoals   = (pid: string) => events.filter(e => e.type === 'goal'   && e.player_id === pid).length
+  const getPlayerAssists = (pid: string) => events.filter(e => e.type === 'assist' && e.player_id === pid).length
+  const getPlayerYellows = (pid: string) => events.filter(e => e.type === 'yellow' && e.player_id === pid).length
+  const getPlayerReds    = (pid: string) => events.filter(e => e.type === 'red'    && e.player_id === pid).length
 
   if (loading) {
     return (
@@ -85,12 +98,20 @@ export default function SummaryPage() {
   return (
     <div className="min-h-screen bg-slate-900 pb-24">
       <header className="sticky top-0 bg-slate-900/95 backdrop-blur border-b border-slate-800 z-10 px-4 py-4">
-        <div className="max-w-lg mx-auto flex items-center gap-3">
-          <button onClick={() => router.push('/')} className="text-slate-400 text-2xl leading-none">‹</button>
-          <div>
-            <h1 className="text-lg font-bold text-white">Riepilogo</h1>
-            {match && <p className="text-slate-400 text-xs">{formatPhase[match.phase]}</p>}
+        <div className="max-w-lg mx-auto flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <button onClick={() => router.push('/')} className="text-slate-400 text-2xl leading-none">‹</button>
+            <div>
+              <h1 className="text-lg font-bold text-white">Riepilogo</h1>
+              {match && <p className="text-slate-400 text-xs">{PHASE_LABEL[match.phase]}</p>}
+            </div>
           </div>
+          <button
+            onClick={() => setShowDeleteConfirm(true)}
+            className="text-red-500 text-sm px-3 py-2 rounded-xl border border-red-800 active:bg-red-900/30"
+          >
+            🗑 Elimina
+          </button>
         </div>
       </header>
 
@@ -132,11 +153,11 @@ export default function SummaryPage() {
               <tbody>
                 {lineup.map(l => {
                   const player = l.player as Player
-                  const mins = getPlayerMinutes(player.id)
-                  const goals = getPlayerGoals(player.id)
+                  const mins    = getPlayerMinutes(player.id)
+                  const goals   = getPlayerGoals(player.id)
                   const assists = getPlayerAssists(player.id)
                   const yellows = getPlayerYellows(player.id)
-                  const reds = getPlayerReds(player.id)
+                  const reds    = getPlayerReds(player.id)
                   return (
                     <tr key={l.id} className="border-b border-slate-700/50">
                       <td className="px-4 py-3">
@@ -145,16 +166,16 @@ export default function SummaryPage() {
                       </td>
                       <td className="text-center text-slate-300 px-2 py-3">{mins}&apos;</td>
                       <td className="text-center px-2 py-3">
-                        {goals > 0 ? <span className="text-green-400 font-bold">{goals}</span> : <span className="text-slate-600">0</span>}
+                        {goals   > 0 ? <span className="text-green-400 font-bold">{goals}</span>   : <span className="text-slate-600">0</span>}
                       </td>
                       <td className="text-center px-2 py-3">
-                        {assists > 0 ? <span className="text-blue-400 font-bold">{assists}</span> : <span className="text-slate-600">0</span>}
+                        {assists > 0 ? <span className="text-blue-400 font-bold">{assists}</span>  : <span className="text-slate-600">0</span>}
                       </td>
                       <td className="text-center px-2 py-3">
                         {yellows > 0 ? <span className="text-yellow-400 font-bold">{yellows}</span> : <span className="text-slate-600">0</span>}
                       </td>
                       <td className="text-center px-2 py-3">
-                        {reds > 0 ? <span className="text-red-400 font-bold">{reds}</span> : <span className="text-slate-600">0</span>}
+                        {reds    > 0 ? <span className="text-red-400 font-bold">{reds}</span>      : <span className="text-slate-600">0</span>}
                       </td>
                     </tr>
                   )
@@ -174,7 +195,7 @@ export default function SummaryPage() {
                   <span className="text-xs font-mono text-slate-400 w-8">{ev.minute}&apos;</span>
                   <span className="text-xs text-slate-300">
                     {EVENT_LABEL[ev.type]}
-                    {ev.player && ` — ${(ev.player as Player).name}`}
+                    {ev.player     && ` — ${(ev.player as Player).name}`}
                     {ev.player_out && ` ↔ ${(ev.player_out as Player).name}`}
                   </span>
                 </div>
@@ -190,6 +211,16 @@ export default function SummaryPage() {
           Vedi statistiche giocatori →
         </Link>
       </main>
+
+      <ConfirmDialog
+        isOpen={showDeleteConfirm}
+        title="Elimina partita"
+        message={`Eliminare definitivamente la partita contro ${match?.opponent}? Risultato, formazione ed eventi verranno cancellati.`}
+        confirmLabel={deleting ? 'Eliminazione...' : 'Elimina'}
+        danger
+        onConfirm={handleDelete}
+        onCancel={() => setShowDeleteConfirm(false)}
+      />
 
       <NavBar />
     </div>
